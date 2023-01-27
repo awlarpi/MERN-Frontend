@@ -1,92 +1,108 @@
-import { useForm } from "react-hook-form"
-import { useState, useEffect } from "react"
-import { useWorkouts } from "../lib/hooks"
-import axios from "axios"
+import { useForm } from 'react-hook-form'
+import { useState, useEffect } from 'react'
+import { useWorkouts } from '../lib/useWorkouts'
+import { yupResolver } from '@hookform/resolvers/yup'
+import * as yup from 'yup'
+import { axiosConfig } from '../lib/axios_config'
+import { useUserStore } from '../lib/auth_store'
 
-type FormData = {
-  title: string
-  load: number
-  reps: number
-}
+const schema = yup.object({
+    title: yup.string().required('Excercise name is required'),
+    load: yup
+        .number()
+        .typeError('Load must be a number')
+        .positive('Load must be greater than zero'),
+    reps: yup
+        .number()
+        .typeError('Reps must be a number')
+        .integer('Reps must be an integer')
+        .positive('Reps must be greater than zero'),
+})
+
+type Formdata = yup.InferType<typeof schema>
 
 export default function App() {
-  const [error, setError] = useState(null)
-  const { workouts, workoutsURL, mutateWorkouts } = useWorkouts()
+    const token = useUserStore((state) => state.user?.token)
+    const [error, setError] = useState<string | null>(null)
+    const { workouts, mutateWorkouts } = useWorkouts()
+    const {
+        register,
+        handleSubmit,
+        reset,
+        formState: { errors, isSubmitSuccessful },
+    } = useForm<Formdata>({
+        resolver: yupResolver(schema),
+    })
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitSuccessful },
-  } = useForm<FormData>()
+    useEffect(() => reset(), [isSubmitSuccessful])
 
-  const onSubmit = handleSubmit(async (data: FormData) => {
-    const submittedWorkout = await axios
-      .post(workoutsURL, data)
-      .then((res) => res.data)
-      .catch((err) => {
-        setError(err.response.data.error)
-        console.error(err.response.data.error)
-      })
-    const newWorkouts = [submittedWorkout, ...workouts]
-    mutateWorkouts(newWorkouts, { revalidate: false })
-    setError(null)
-  })
+    const onSubmit = handleSubmit(async (data) => {
+        const submittedWorkout = await axiosConfig
+            .post('/api/workouts', data, {
+                headers: { Authorization: 'Bearer ' + token },
+            })
+            .then((res) => res.data)
+            .catch((err) => {
+                setError(err.response.data.error)
+                console.error(err.response.data.error)
+            })
+        const newWorkouts = [submittedWorkout, ...workouts]
+        mutateWorkouts(newWorkouts, { revalidate: false })
+        setError(null)
+    })
 
-  useEffect(() => reset(), [isSubmitSuccessful])
+    return (
+        <>
+            <h3 className="mb-3 text-lg font-bold">Add a New Workout</h3>
 
-  return (
-    <div>
-      <h3 className="mb-3 text-lg font-bold">Add a New Workout</h3>
-      <form className="flex flex-col" onSubmit={onSubmit}>
-        <div className="mb-3 flex flex-col">
-          <label>Title:</label>
+            <form className="flex flex-col" onSubmit={onSubmit}>
+                <div className="mb-3 flex flex-col">
+                    <label>Title:</label>
+                    <input
+                        className="mt-1 px-2 py-2 drop-shadow-md"
+                        type="text"
+                        {...register('title')}
+                    />
+                    <p className="mt-1 text-xs text-red-500">
+                        {errors.title?.message}
+                    </p>
+                </div>
 
-          <input
-            className="mt-1 px-2 py-2 drop-shadow-md"
-            placeholder="Title"
-            {...register("title", { required: true })}
-          />
-          {errors.load && (
-            <p className="mt-1 text-xs text-red-500">Enter exercise name.</p>
-          )}
-        </div>
+                <div className="mb-3 flex flex-col">
+                    <label>Load:</label>
+                    <input
+                        className="mt-1 px-2 py-2 drop-shadow-md"
+                        type="number"
+                        {...register('load')}
+                    />
+                    <p className="mt-1 text-xs text-red-500">
+                        {errors.load?.message}
+                    </p>
+                </div>
 
-        <div className="mb-3 flex flex-col">
-          <label>Load:</label>
-          <input
-            className="mt-1 px-2 py-2 drop-shadow-md"
-            placeholder="Load"
-            {...register("load", { pattern: /\d+/, required: true })}
-          />
-          {errors.load && (
-            <p className="mt-1 text-xs text-red-500">Enter load in kgs.</p>
-          )}
-        </div>
+                <div className="mb-3 flex flex-col">
+                    <label>Reps:</label>
+                    <input
+                        className="mt-1 px-2 py-2 drop-shadow-md"
+                        type="number"
+                        {...register('reps')}
+                    />
+                    <p className="mt-1 text-xs text-red-500">
+                        {errors.reps?.message}
+                    </p>
+                </div>
 
-        <div className="mb-3 flex flex-col">
-          <label>Reps:</label>
-          <input
-            className="mt-1 px-2 py-2 drop-shadow-md"
-            placeholder="Reps"
-            {...register("reps", { pattern: /\d+/, required: true })}
-          />
-          {errors.reps && (
-            <p className="mt-1 text-xs text-red-500">Enter number of reps.</p>
-          )}
-        </div>
+                <input
+                    className="mt-3 cursor-pointer border border-black bg-white py-1 drop-shadow"
+                    type="submit"
+                />
 
-        <input
-          className="mt-3 cursor-pointer border border-green-400 bg-white py-1 font-mono font-semibold drop-shadow"
-          type="submit"
-        />
-
-        {error && (
-          <div className="my-2 border-4 border-red-700 bg-slate-200 p-2 text-red-700">
-            {error}
-          </div>
-        )}
-      </form>
-    </div>
-  )
+                {error && (
+                    <div className="my-4 border border-red-700 bg-red-100 p-2 text-center text-red-700">
+                        {error}
+                    </div>
+                )}
+            </form>
+        </>
+    )
 }
